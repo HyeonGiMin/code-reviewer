@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="bg-white border-b px-6 h-14 flex items-center justify-end shrink-0">
           <span className="text-sm text-gray-600">{session.user.name}</span>
         </header>
-        <main className="flex-1 overflow-y-auto p-6 min-h-0">
+        <main className="flex-1 overflow-y-auto min-h-0 [&:has([data-layout=fullpage])]:overflow-hidden [&:has([data-layout=fullpage])]:p-0 p-6">
           {children}
         </main>
       </div>

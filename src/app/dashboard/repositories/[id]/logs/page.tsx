@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth'
 import { getRepository } from '@/lib/repositories'
 import { createVcsProvider } from '@/lib/vcs'
 import type { CommitLog } from '@/types'
+import { unstable_cache } from 'next/cache'
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -27,8 +28,16 @@ export default async function LogsPage({ params }: { params: Promise<{ id: strin
   let error: string | null = null
 
   try {
-    const provider = createVcsProvider(repo)
-    logs = await provider.getLogs(50)
+    const fetchLogs = unstable_cache(
+      async (repoData) => {
+        const provider = createVcsProvider(repoData)
+        return await provider.getLogs(50)
+      },
+      [`repo-logs-${repo.id}`],
+      { revalidate: 60, tags: [`repo-${repo.id}`] }
+    )
+    
+    logs = await fetchLogs(repo)
   } catch (e) {
     error = e instanceof Error ? e.message : '로그를 불러오지 못했습니다.'
   }

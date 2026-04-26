@@ -7,5 +7,6 @@ export interface VcsAuth {
 
 export interface VcsProvider {
   getLogs(limit?: number): Promise<CommitLog[]>
+  getCommit(revision: string): Promise<CommitLog | null>
   getDiff(revision: string): Promise<FileDiff[]>
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import Link from 'next/link'
 import {
   ChevronLeft, User, Clock, FileText, MessageSquare,
@@ -9,7 +10,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { CommitLog, FileDiff } from '@/types'
+import type { CommitLog, FileDiff, ReviewComment } from '@/types'
 
 // ─── 파일 아이콘 (VSCode Material 스타일) ─────────────────
 import { FileIcon as RawFileIcon, defaultStyles } from 'react-file-icon'
@@ -150,6 +151,7 @@ function TreeFile({
 }) {
   const { added, removed } = diffStats(node.file!.diff)
   const isActive = activeFile === node.fullPath
+  const status = node.file?.status
 
   return (
     <button
@@ -162,10 +164,13 @@ function TreeFile({
     >
       <span className="w-3 shrink-0" />
       <FileIcon name={node.name} />
-      <span className={cn('text-xs font-mono truncate flex-1 min-w-0', isActive ? 'text-[#0969da]' : 'text-[#1f2328]')}>
+      <span className={cn('text-xs font-mono truncate flex-1 min-w-0', isActive ? 'text-[#0969da]' : status === 'deleted' ? 'text-[#656d76] line-through' : 'text-[#1f2328]')}>
         {node.name}
       </span>
-      <span className="text-[10px] text-[#1a7f37] font-semibold shrink-0">+{added}</span>
+      {status === 'added' && <span className="text-[10px] px-1 rounded-sm bg-[#e6ffec] text-[#1a7f37] border border-[#1a7f37]/20" title="Added">A</span>}
+      {status === 'modified' && <span className="text-[10px] px-1 rounded-sm bg-[#ddf4ff] text-[#0969da] border border-[#0969da]/20" title="Modified">M</span>}
+      {status === 'deleted' && <span className="text-[10px] px-1 rounded-sm bg-[#ffebe9] text-[#82071e] border border-[#82071e]/20" title="Deleted">D</span>}
+      <span className="text-[10px] text-[#1a7f37] font-semibold shrink-0 ml-1">+{added}</span>
       <span className="text-[10px] text-[#82071e] font-semibold shrink-0">−{removed}</span>
     </button>
   )
@@ -398,52 +403,109 @@ export default function ReviewClient({ repoId, commit }: Props) {
   const [diffs, setDiffs] = useState<FileDiff[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  
+  // 전체 코멘트 데이터
+  const [allComments, setAllComments] = useState<ReviewComment[]>([])
+  
+  // null = 커밋 전체 코멘트 모드, string = 파일 코멘트 모드
   const [activeFile, setActiveFile] = useState<string | null>(null)
-  const [comment, setComment] = useState('')
+  const [commitComment, setCommitComment] = useState('')
+  const [fileComment, setFileComment] = useState('')
 
+  // Diff 데이터와 기존 리뷰 코멘트 로딩
   useEffect(() => {
-    fetch(`/api/repositories/${repoId}/diff/${commit.revision}`)
-      .then(async (res) => {
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'diff 로딩 실패')
-        setDiffs(data)
+    const fetchWithTimeout = (url: string, ms = 30000) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), ms)
+      return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer))
+    }
+
+    Promise.allSettled([
+      fetchWithTimeout(`/api/repositories/${repoId}/diff/${commit.revision}`).then(r => r.json()),
+      fetchWithTimeout(`/api/repositories/${repoId}/reviews/${commit.revision}`).then(r => r.json()),
+    ])
+      .then(([diffResult, reviewResult]) => {
+        if (diffResult.status === 'rejected') throw new Error(diffResult.reason?.message ?? 'diff 로드 실패')
+        const diffData = diffResult.value
+        if (diffData.error) throw new Error(diffData.error)
+        setDiffs(diffData)
+
+        const comments = reviewResult.status === 'fulfilled' ? (reviewResult.value.comments ?? []) : []
+        setAllComments(comments)
+        setCommitComment(comments.find((c: ReviewComment) => !c.filePath)?.body || '')
       })
       .catch((e) => setFetchError(e.message))
       .finally(() => setLoading(false))
   }, [repoId, commit.revision])
 
-  function scrollToFile(filePath: string) {
+  // 파일 선택 시 해당 파일의 기존 코멘트 복원
+  function selectFile(filePath: string) {
     setActiveFile(filePath)
-    document.getElementById(`file-${filePath}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setFileComment(allComments.find(c => c.filePath === filePath)?.body || '')
   }
 
-  return (
-    <div data-layout="fullpage" className="flex flex-col h-full" style={{ backgroundColor: '#ffffff' }}>
+  // 코멘트 저장 함수 (공통)
+  async function saveComment(filePath: string | undefined, body: string) {
+    try {
+      const res = await fetch(`/api/repositories/${repoId}/reviews/${commit.revision}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath, body })
+      })
+      if (!res.ok) throw new Error('저장 실패')
+      const updatedReview = await res.json()
+      setAllComments(updatedReview.comments || [])
+      toast.success('저장되었습니다.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '오류가 발생했습니다.')
+    }
+  }
 
-      {/* ── 상단 커밋 헤더 ── */}
-      <div className="shrink-0 border-b border-[#d0d7de] px-6 py-4 flex items-start gap-4 flex-wrap bg-white">
+  const selectedDiff = diffs.find((d) => d.filePath === activeFile)
+
+  return (
+    <div data-layout="fullpage" className="flex flex-col h-full bg-white">
+
+      {/* ── 상단 커밋 헤더 (클릭 → 커밋 코멘트 모드) ── */}
+      <button
+        onClick={() => setActiveFile(null)}
+        className={cn(
+          'shrink-0 border-b px-6 py-4 flex items-start gap-4 flex-wrap w-full text-left transition-colors',
+          activeFile === null
+            ? 'border-[#0969da] bg-[#f0f6ff]'
+            : 'border-[#d0d7de] bg-white hover:bg-[#f6f8fa]'
+        )}
+      >
         <Link
           href={`/dashboard/repositories/${repoId}/logs`}
+          onClick={(e) => e.stopPropagation()}
           className="flex items-center gap-1 text-sm text-[#656d76] hover:text-[#1f2328] transition-colors shrink-0 mt-0.5"
         >
           <ChevronLeft className="w-4 h-4" />로그
         </Link>
-        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-          <p className="text-base font-semibold text-[#1f2328] leading-snug">{commit.message || '(메시지 없음)'}</p>
+        <div className="flex flex-col gap-2 flex-1 min-w-0">
+          <div className="max-h-[120px] overflow-y-auto pr-1">
+            <p className="text-[15px] font-semibold text-[#1f2328] leading-snug whitespace-pre-wrap">{commit.message || '(메시지 없음)'}</p>
+          </div>
           <div className="flex items-center gap-4 text-xs text-[#656d76] flex-wrap">
             <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{commit.author}</span>
             <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{new Date(commit.date).toLocaleString('ko-KR')}</span>
             <Badge variant="secondary" className="font-mono">{commit.revision.slice(0, 7)}</Badge>
           </div>
         </div>
-        {!loading && !fetchError && (
-          <span className="flex items-center gap-1.5 text-xs text-[#656d76] shrink-0 mt-1">
-            <FileText className="w-3.5 h-3.5" />{diffs.length}개 파일
-          </span>
-        )}
-      </div>
+        <div className="flex items-center gap-2 shrink-0 mt-1">
+          {!loading && !fetchError && (
+            <span className="flex items-center gap-1.5 text-xs text-[#656d76]">
+              <FileText className="w-3.5 h-3.5" />{diffs.length}개 파일
+            </span>
+          )}
+          {activeFile === null && (
+            <span className="text-xs text-[#0969da] font-medium">커밋 코멘트 작성 중</span>
+          )}
+        </div>
+      </button>
 
-      {/* ── 바디: 좌측 파일목록 + 우측 diff ── */}
+      {/* ── 바디: 좌측 파일목록 + 우측 컨텐츠 ── */}
       <div className="flex flex-1 min-h-0" style={{ backgroundColor: '#f6f8fa' }}>
 
         {/* 좌측 파일 트리 */}
@@ -471,19 +533,19 @@ export default function ReviewClient({ repoId, commit }: Props) {
                 })
                 .map((node) =>
                   node.type === 'dir' ? (
-                    <TreeDir key={node.name} node={node} depth={0} activeFile={activeFile} onSelect={scrollToFile} />
+                    <TreeDir key={node.name} node={node} depth={0} activeFile={activeFile} onSelect={selectFile} />
                   ) : (
-                    <TreeFile key={node.name} node={node} depth={0} activeFile={activeFile} onSelect={scrollToFile} />
+                    <TreeFile key={node.name} node={node} depth={0} activeFile={activeFile} onSelect={selectFile} />
                   )
                 )}
             </div>
           )}
         </aside>
 
-        {/* 우측: diff 목록 + 하단 고정 코멘트 */}
+        {/* 우측: 모드별 컨텐츠 */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0">
 
-          {/* diff 스크롤 영역 */}
+          {/* 스크롤 영역 */}
           <div className="flex-1 overflow-y-auto min-h-0 p-4">
             {loading ? (
               <div className="flex items-center justify-center py-20 gap-2 text-sm text-[#656d76]">
@@ -493,36 +555,72 @@ export default function ReviewClient({ repoId, commit }: Props) {
               <div className="flex items-center gap-2 px-4 py-3 text-sm text-red-600 bg-white rounded-md border border-red-200">
                 <AlertCircle className="w-4 h-4 shrink-0" />{fetchError}
               </div>
-            ) : diffs.length === 0 ? (
-              <div className="flex items-center justify-center py-20 text-sm text-[#656d76]">
-                변경된 파일이 없습니다.
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {diffs.map((file) => (
-                  <FileDiffBlock
-                    key={file.filePath}
-                    file={file}
-                    active={activeFile === file.filePath}
-                    onSelect={() => setActiveFile(file.filePath)}
+            ) : activeFile === null ? (
+              /* 커밋 코멘트 모드 */
+              <div className="max-w-2xl mx-auto mt-8 bg-white rounded-md border border-[#d0d7de] overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#d0d7de] bg-[#f6f8fa] flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-[#656d76]" />
+                  <span className="text-sm font-semibold text-[#1f2328]">커밋 전체 리뷰</span>
+                  <span className="ml-auto font-mono text-xs text-[#656d76]">{commit.revision.slice(0, 7)}</span>
+                </div>
+                <div className="p-4 flex flex-col gap-3">
+                  <p className="text-xs text-[#656d76]">
+                    특정 파일이 아닌 이 커밋 전체에 대한 리뷰 코멘트를 작성합니다.
+                    파일별 코멘트를 남기려면 왼쪽 파일 목록에서 파일을 선택하세요.
+                  </p>
+                  <textarea
+                    value={commitComment}
+                    onChange={(e) => setCommitComment(e.target.value)}
+                    placeholder="이 커밋에 대한 리뷰를 작성하세요..."
+                    rows={8}
+                    className="w-full border border-[#d0d7de] rounded-md px-3 py-2 text-sm text-[#1f2328] resize-none focus:outline-none focus:ring-2 focus:ring-[#0969da]/30 focus:border-[#0969da]"
                   />
-                ))}
+                  <div className="flex justify-end">
+                    <Button 
+                      size="sm" 
+                      onClick={() => saveComment(undefined, commitComment)}
+                    >
+                      저장
+                    </Button>
+                  </div>
+                </div>
               </div>
-            )}
+            ) : selectedDiff ? (
+              /* 파일 diff 모드 */
+              <FileDiffBlock
+                file={selectedDiff}
+                active
+                onSelect={() => {}}
+              />
+            ) : null}
           </div>
 
-          {/* 하단 고정 코멘트 */}
-          <div className="shrink-0 border-t border-[#d0d7de] bg-white px-5 py-3 flex gap-3 items-end shadow-[0_-1px_4px_rgba(0,0,0,0.08)]">
-            <MessageSquare className="w-4 h-4 text-[#656d76] shrink-0 mb-1.5" />
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="리뷰 코멘트를 작성하세요..."
-              rows={2}
-              className="flex-1 border border-[#d0d7de] rounded-md px-3 py-2 text-sm text-[#1f2328] resize-none focus:outline-none focus:ring-2 focus:ring-[#0969da]/30 focus:border-[#0969da] min-h-[40px] max-h-[120px]"
-            />
-            <Button size="sm" disabled={!comment.trim()} className="shrink-0 mb-0.5">저장</Button>
-          </div>
+          {/* 하단 고정 코멘트 — 파일 선택 시에만 표시 */}
+          {activeFile !== null && (
+            <div className="shrink-0 border-t border-[#d0d7de] bg-white px-5 py-3 flex gap-3 items-end shadow-[0_-1px_4px_rgba(0,0,0,0.08)]">
+              <div className="flex flex-col flex-1 gap-1.5">
+                <span className="text-xs text-[#656d76] flex items-center gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  파일 코멘트
+                  <span className="font-mono text-[#0969da]">— {activeFile.split('/').pop()}</span>
+                </span>
+                <textarea
+                  value={fileComment}
+                  onChange={(e) => setFileComment(e.target.value)}
+                  placeholder={`${activeFile.split('/').pop()}에 대한 코멘트를 작성하세요...`}
+                  rows={2}
+                  className="w-full border border-[#d0d7de] rounded-md px-3 py-2 text-sm text-[#1f2328] resize-none focus:outline-none focus:ring-2 focus:ring-[#0969da]/30 focus:border-[#0969da] max-h-[120px]"
+                />
+              </div>
+              <Button 
+                size="sm" 
+                className="shrink-0 mb-0.5"
+                onClick={() => saveComment(activeFile, fileComment)}
+              >
+                저장
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

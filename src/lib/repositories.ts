@@ -19,7 +19,7 @@ export async function getRepository(id: number, userId: number): Promise<Reposit
     vcsType: row.vcs_type,
     url: row.url,
     httpUsername: row.http_username,
-    httpPassword: row.http_password ? decrypt(row.http_password) : undefined,
+    httpPassword: row.http_password ? (() => { try { return decrypt(row.http_password) } catch { return undefined } })() : undefined,
     createdAt: row.created_at,
   }
 }

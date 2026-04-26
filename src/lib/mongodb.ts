@@ -17,7 +17,10 @@ let cached = global._mongooseConn
 async function connectMongoDB() {
   if (cached) return cached
 
-  cached = await mongoose.connect(MONGODB_URI)
+  cached = await mongoose.connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 3000,
+    connectTimeoutMS: 3000,
+  })
   global._mongooseConn = cached
   return cached
 }

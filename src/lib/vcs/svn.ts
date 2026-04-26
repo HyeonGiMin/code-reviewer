@@ -47,7 +47,25 @@ export class SvnProvider implements VcsProvider {
     }))
   }
 
+  async getCommit(revision: string): Promise<CommitLog | null> {
+    if (!/^\d+$/.test(revision)) return null
+    const { stdout } = await execFileAsync('svn', [
+      'log', this.url, '--xml', '--verbose', `--revision=${revision}`, ...this.authArgs(),
+    ])
+    const parsed = await parseStringPromise(stdout)
+    const entry: SvnLogEntry | undefined = parsed?.log?.logentry?.[0]
+    if (!entry) return null
+    return {
+      revision: entry.$.revision,
+      author: entry.author?.[0] ?? '',
+      message: entry.msg?.[0]?.trim() ?? '',
+      date: entry.date?.[0] ?? '',
+      changedPaths: (entry.paths?.[0]?.path ?? []).map((p: { _: string }) => p._),
+    }
+  }
+
   async getDiff(revision: string): Promise<FileDiff[]> {
+    if (!/^\d+$/.test(revision)) throw new Error(`유효하지 않은 SVN 리비전: ${revision}`)
     const prev = String(Number(revision) - 1)
 
     const { stdout } = await execFileAsync('svn', [

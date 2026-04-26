@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { ChevronDown, ChevronRight, Plus, LayoutDashboard, FolderGit2, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, LayoutDashboard, FolderGit2, LogOut, PanelLeftClose, PanelLeftOpen, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Repository {
@@ -13,7 +13,7 @@ interface Repository {
   vcs_type: 'git' | 'svn'
 }
 
-export default function Sidebar() {
+export default function Sidebar({ userName }: { userName?: string | null }) {
   const [collapsed, setCollapsed] = useState(false)
   const [repoOpen, setRepoOpen] = useState(true)
   const [repos, setRepos] = useState<Repository[]>([])
@@ -129,8 +129,17 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* 로그아웃 */}
-      <div className="px-2 py-3 border-t border-gray-700">
+      {/* 사용자 / 로그아웃 */}
+      <div className="px-2 py-3 border-t border-gray-700 space-y-1">
+        {userName && (
+          <div className={cn(
+            'flex items-center gap-3 px-2 py-2 text-sm text-gray-400',
+            collapsed && 'justify-center'
+          )} title={collapsed ? userName : undefined}>
+            <User className="w-5 h-5 shrink-0" />
+            {!collapsed && <span className="truncate">{userName}</span>}
+          </div>
+        )}
         <button
           onClick={() => signOut({ callbackUrl: '/auth/signin' })}
           className="flex items-center gap-3 w-full px-2 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"

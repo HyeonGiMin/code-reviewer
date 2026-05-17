@@ -6,7 +6,6 @@ import { auth } from '@/lib/auth'
 import { getRepository } from '@/lib/repositories'
 import { createVcsProvider } from '@/lib/vcs'
 import type { CommitLog } from '@/types'
-import { unstable_cache } from 'next/cache'
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -16,6 +15,16 @@ function timeAgo(dateStr: string) {
   return `${days}일 전`
 }
 
+function RevisionBadge({ revision, isSvn }: { revision: string; isSvn: boolean }) {
+  const label = isSvn ? `r${revision}` : revision.slice(0, 7)
+  return (
+    <Badge variant="secondary" className="text-xs font-mono shrink-0">
+      {label}
+    </Badge>
+  )
+}
+
+
 export default async function LogsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await auth()
@@ -24,20 +33,13 @@ export default async function LogsPage({ params }: { params: Promise<{ id: strin
   const repo = await getRepository(Number(id), Number(session.user.id))
   if (!repo) redirect('/dashboard')
 
+  const isSvn = repo.vcsType === 'svn'
   let logs: CommitLog[] = []
   let error: string | null = null
 
   try {
-    const fetchLogs = unstable_cache(
-      async (repoData) => {
-        const provider = createVcsProvider(repoData)
-        return await provider.getLogs(50)
-      },
-      [`repo-logs-${repo.id}`],
-      { revalidate: 60, tags: [`repo-${repo.id}`] }
-    )
-    
-    logs = await fetchLogs(repo)
+    const provider = createVcsProvider(repo)
+    logs = await provider.getLogs(50)
   } catch (e) {
     error = e instanceof Error ? e.message : '로그를 불러오지 못했습니다.'
   }
@@ -49,7 +51,12 @@ export default async function LogsPage({ params }: { params: Promise<{ id: strin
           <ChevronLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h2 className="text-xl font-bold text-gray-800">{repo.name}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-800">{repo.name}</h2>
+            <Badge variant="outline" className={`text-xs ${isSvn ? 'text-purple-600 border-purple-300' : 'text-orange-500 border-orange-300'}`}>
+              {repo.vcsType.toUpperCase()}
+            </Badge>
+          </div>
           <p className="text-sm text-muted-foreground mt-0.5 truncate max-w-sm">{repo.url}</p>
         </div>
       </div>
@@ -70,31 +77,31 @@ export default async function LogsPage({ params }: { params: Promise<{ id: strin
             <Link
               key={log.revision}
               href={`/dashboard/repositories/${id}/logs/${log.revision}`}
-              className="group flex items-center gap-4 bg-white rounded-xl border border-border px-5 py-4 hover:border-primary/40 hover:shadow-sm transition-all"
+              className="group block bg-white rounded-xl border border-border px-5 py-4 hover:border-primary/40 hover:shadow-sm transition-all"
             >
-              <div className="text-muted-foreground group-hover:text-primary transition-colors shrink-0">
-                <GitCommitHorizontal className="w-5 h-5" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 group-hover:text-primary transition-colors truncate">
-                  {log.message || '(메시지 없음)'}
-                </p>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <User className="w-3 h-3" />
-                    {log.author}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3" />
-                    {timeAgo(log.date)}
-                  </span>
+              <div className="flex items-center gap-4">
+                <div className="text-muted-foreground group-hover:text-primary transition-colors shrink-0">
+                  <GitCommitHorizontal className="w-5 h-5" />
                 </div>
-              </div>
 
-              <Badge variant="secondary" className="text-xs font-mono shrink-0">
-                {log.revision.slice(0, 7)}
-              </Badge>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 group-hover:text-primary transition-colors line-clamp-2 whitespace-pre-line">
+                    {log.message.trim() || '(메시지 없음)'}
+                  </p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <User className="w-3 h-3" />
+                      {log.author}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      {timeAgo(log.date)}
+                    </span>
+                  </div>
+                </div>
+
+                <RevisionBadge revision={log.revision} isSvn={isSvn} />
+              </div>
             </Link>
           ))}
         </div>

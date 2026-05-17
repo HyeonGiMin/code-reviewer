@@ -81,7 +81,7 @@ interface TreeNode {
 function buildTree(files: FileDiff[]): TreeNode {
   const root: TreeNode = { name: '', fullPath: '', type: 'dir', children: new Map() }
   for (const file of files) {
-    const parts = file.filePath.split('/')
+    const parts = file.filePath.split('/').filter(Boolean)
     let node = root
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]
@@ -89,7 +89,8 @@ function buildTree(files: FileDiff[]): TreeNode {
       if (!node.children.has(part)) {
         node.children.set(part, {
           name: part,
-          fullPath: parts.slice(0, i + 1).join('/'),
+          // 파일 노드는 원본 filePath 유지 (find 매칭용), 디렉토리는 표시용 경로
+          fullPath: isLast ? file.filePath : parts.slice(0, i + 1).join('/'),
           type: isLast ? 'file' : 'dir',
           children: new Map(),
           file: isLast ? file : undefined,
@@ -198,7 +199,7 @@ function parseSplitRows(raw: string): SplitRow[] {
   while (i < lines.length) {
     const line = lines[i]
 
-    if (line.startsWith('---') || line.startsWith('+++')) { i++; continue }
+    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('Index:') || line.startsWith('===')) { i++; continue }
 
     if (line.startsWith('@@')) {
       const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)

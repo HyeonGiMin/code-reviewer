@@ -29,15 +29,29 @@ export async function GET(
     console.warn(`[Cache] MongoDB unavailable, skipping cache lookup:`, err)
   }
 
-  if (cached) {
+  if (cached && Array.isArray(cached.diffData) && cached.diffData.length > 0) {
     console.log(`[Cache Hit] Diff for repo ${id}, rev ${revision} from MongoDB`)
     return NextResponse.json(cached.diffData)
+  }
+
+  // 빈 배열로 캐시된 경우 삭제 후 재계산
+  if (cached) {
+    try {
+      await CachedDiff.deleteOne({ repositoryId: Number(id), revision })
+    } catch { /* ignore */ }
   }
 
   // 2. 캐시 미스 시, VCS 플러그인을 통한 파싱 수행
   console.log(`[Cache Miss] Fetching diff from VCS for repo ${id}, rev ${revision}`)
   const provider = createVcsProvider(repo)
-  const diffs = await provider.getDiff(revision)
+  let diffs
+  try {
+    diffs = await provider.getDiff(revision)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[Diff] repo=${id} rev=${revision} error:`, message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 
   // 3. 파싱 완료된 결과물을 MongoDB에 캐싱 (연결 실패 시 재시도 후 저장)
   try {

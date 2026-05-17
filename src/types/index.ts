@@ -24,7 +24,7 @@ export interface CommitLog {
   author: string
   message: string
   date: string
-  changedPaths: string[]
+  changedPaths: Array<{ path: string; action?: string }>
 }
 
 export interface FileDiff {

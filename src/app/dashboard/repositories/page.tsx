@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { FolderOpen, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +17,7 @@ interface Repository {
 }
 
 export default function RepositoriesPage() {
+  const router = useRouter()
   const [repos, setRepos] = useState<Repository[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -69,6 +71,7 @@ export default function RepositoriesPage() {
           {repos.map((repo) => (
             <div
               key={repo.id}
+              onDoubleClick={() => router.push(`/dashboard/repositories/${repo.id}/logs`)}
               className="group bg-white rounded-xl border border-border px-5 py-4 flex items-center justify-between hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer"
             >
               <div className="flex items-center gap-4 min-w-0">

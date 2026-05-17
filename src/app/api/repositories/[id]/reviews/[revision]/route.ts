@@ -76,10 +76,10 @@ export async function POST(
   const norm = (v: string | undefined | null) => v || null
   if (!body || body.trim() === '') {
     // 삭제
-    comments = comments.filter(c => norm(c.filePath) !== norm(filePath))
+    comments = comments.filter((c: { filePath?: string }) => norm(c.filePath) !== norm(filePath))
   } else {
     // 추가 거나 수정
-    const existingIdx = comments.findIndex(c => norm(c.filePath) === norm(filePath))
+    const existingIdx = comments.findIndex((c: { filePath?: string }) => norm(c.filePath) === norm(filePath))
     if (existingIdx !== -1) {
       comments[existingIdx].body = body
       comments[existingIdx].createdAt = new Date()

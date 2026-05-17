@@ -19,12 +19,19 @@ export default function Sidebar({ userName }: { userName?: string | null }) {
   const [repos, setRepos] = useState<Repository[]>([])
   const pathname = usePathname()
 
-  useEffect(() => {
+  const fetchRepos = () => {
     fetch('/api/repositories')
       .then((r) => r.json())
       .then((data) => Array.isArray(data) && setRepos(data))
       .catch(() => {})
-  }, [pathname]) // 페이지 이동할 때마다 갱신
+  }
+
+  useEffect(() => { fetchRepos() }, [pathname])
+
+  useEffect(() => {
+    window.addEventListener('repo-added', fetchRepos)
+    return () => window.removeEventListener('repo-added', fetchRepos)
+  }, [])
 
   const isDashboard = pathname === '/dashboard'
   const activeRepoId = pathname.match(/\/repositories\/(\d+)/)?.[1]

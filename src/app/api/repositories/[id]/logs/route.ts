@@ -19,8 +19,13 @@ export async function GET(
   }
 
   const limit = Number(req.nextUrl.searchParams.get('limit') ?? '30')
-  const provider = createVcsProvider(repo)
-  const logs = await provider.getLogs(limit)
-
-  return NextResponse.json(logs)
+  try {
+    const provider = createVcsProvider(repo)
+    const logs = await provider.getLogs(limit)
+    return NextResponse.json(logs)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[Logs] repo=${id} error:`, message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

@@ -56,6 +56,10 @@ export default function AddRepositoryModal({ onClose, onAdded }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (form.vcsType === 'svn' && !form.url.startsWith('http://') && !form.url.startsWith('https://')) {
+      setError('SVN은 http:// 또는 https:// URL만 지원합니다. (svn:// 불가)')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/repositories', {
@@ -74,6 +78,7 @@ export default function AddRepositoryModal({ onClose, onAdded }: Props) {
         setError(data.error ?? '저장 중 오류가 발생했습니다.')
         return
       }
+      window.dispatchEvent(new CustomEvent('repo-added'))
       onAdded()
     } finally {
       setLoading(false)

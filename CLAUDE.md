@@ -6,6 +6,7 @@ Claude Code가 이 레포지토리에서 작업할 때 읽는 지침 파일.
 
 @docs/PROJECT.md
 @docs/ROADMAP.md
+@docs/JENKINS.md
 
 ---
 

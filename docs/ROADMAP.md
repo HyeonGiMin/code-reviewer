@@ -44,7 +44,7 @@
 ## 5. 운영
 
 - [ ] 🟡 `docker-compose.yml` (PostgreSQL + MongoDB + 앱 한번에 실행)
-- [ ] 🔵 GitHub Actions CI (lint + build)
+- [x] 🔴 Jenkins CI/CD 파이프라인 구성 (Lint → Build → PM2 배포)
 - [ ] 🔵 에러 모니터링 (Sentry 연동)
 
 ---
@@ -55,3 +55,4 @@
 |------|------|
 | 2026-05-17 | `TruncatedLabel` ResizeObserver 적용, className optional 처리 |
 | 2026-05-17 | 리뷰 워크플로우 구현 — status 필드, PATCH API, 상태 버튼 UI, 로그 목록 배지 |
+| 2026-05-17 | Jenkins CI/CD 구성 — Jenkinsfile, ecosystem.config.js, docs/JENKINS.md |

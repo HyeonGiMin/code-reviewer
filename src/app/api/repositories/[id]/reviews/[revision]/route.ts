@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import connectMongoDB from '@/lib/mongodb'
 import Review from '@/models/Review'
+import type { ReviewStatus } from '@/types'
+
+const VALID_STATUSES: ReviewStatus[] = ['pending', 'approved', 'needs_changes']
 
 export async function GET(
   _req: NextRequest,
@@ -98,5 +101,43 @@ export async function POST(
   } catch (err) {
     console.error('[Reviews POST] Failed to save review:', err)
     return NextResponse.json({ error: '코멘트를 저장할 수 없습니다.' }, { status: 503 })
+  }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; revision: string }> }
+) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { id, revision } = await params
+
+  let status: ReviewStatus
+  try {
+    ({ status } = await req.json())
+  } catch {
+    return NextResponse.json({ error: '잘못된 요청 형식입니다.' }, { status: 400 })
+  }
+  if (!VALID_STATUSES.includes(status)) {
+    return NextResponse.json({ error: '유효하지 않은 상태값입니다.' }, { status: 400 })
+  }
+
+  try {
+    await connectMongoDB()
+  } catch (err) {
+    console.warn('[Reviews PATCH] MongoDB unavailable:', err)
+    return NextResponse.json({ error: '저장소에 연결할 수 없습니다.' }, { status: 503 })
+  }
+
+  try {
+    const updated = await Review.findOneAndUpdate(
+      { repositoryId: Number(id), revision, userId: Number(session.user.id) },
+      { $set: { status } },
+      { new: true, upsert: true }
+    ).lean()
+    return NextResponse.json(updated)
+  } catch (err) {
+    console.error('[Reviews PATCH] Failed to update status:', err)
+    return NextResponse.json({ error: '상태를 저장할 수 없습니다.' }, { status: 503 })
   }
 }

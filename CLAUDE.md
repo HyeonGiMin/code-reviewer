@@ -1,20 +1,15 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Claude Code가 이 레포지토리에서 작업할 때 읽는 지침 파일.
 
-## Project Overview
+## 프로젝트 문서
 
-Code review web application supporting SVN and Git repositories. Users configure their own repositories, browse commit logs, view diffs, and leave comments on changes.
+@docs/PROJECT.md
+@docs/ROADMAP.md
 
-## Tech Stack
+---
 
-- **Framework**: Next.js 16 (App Router, TypeScript)
-- **Styling**: Tailwind CSS v4
-- **Auth**: NextAuth v5 (beta) — Credentials provider, JWT session
-- **PostgreSQL**: users, repositories (via `pg` pool) — `src/lib/postgres.ts`
-- **MongoDB**: reviews/comments, diff snapshots (via `mongoose`) — `src/lib/mongodb.ts`
-
-## Commands
+## 명령어
 
 ```bash
 npm run dev      # 개발 서버 (localhost:3000)
@@ -22,45 +17,45 @@ npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
 ```
 
-## Project Structure
+---
 
-```
-src/
-  app/
-    api/
-      auth/[...nextauth]/  # NextAuth handler
-      repositories/        # CRUD: 사용자 레포지토리 설정
-      reviews/             # CRUD: 코멘트/리뷰 (MongoDB)
-    auth/                  # 로그인 페이지
-    dashboard/             # 메인 대시보드
-    repositories/          # 레포지토리 목록/상세
-  lib/
-    auth.ts                # NextAuth 설정
-    postgres.ts            # pg Pool 싱글턴
-    mongodb.ts             # mongoose 연결 싱글턴 (dev hot-reload 대응)
-  types/index.ts           # 공통 타입 (User, Repository, CommitLog, FileDiff, Review)
-db/
-  init.sql                 # PostgreSQL 스키마 초기화
-```
+## 코딩 규칙
 
-## Environment Variables
+### Next.js App Router
+- `'use client'`는 꼭 필요한 컴포넌트에만 붙인다 (Server Component 기본값 유지).
+- API Route는 반드시 `auth()` 세션 확인 후 리소스 소유자 검증.
+- 민감한 로직(DB 쿼리, 토큰 처리)은 서버 사이드에서만.
 
-`.env.local`에 설정 (`.env.example` 참고):
+### TypeScript
+- `any` 타입 금지. `src/types/index.ts` 공통 타입을 재사용.
+- null/undefined는 옵셔널 체이닝과 기본값으로 안전하게 처리.
 
-| 변수 | 용도 |
-|------|------|
-| `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | PostgreSQL 연결 |
-| `MONGODB_URI` | MongoDB 연결 |
-| `AUTH_SECRET` | NextAuth JWT 서명 키 |
-| `AUTH_URL` | 배포 시 서비스 URL |
+### Tailwind CSS v4
+- 조건부 클래스는 `cn()` (`src/lib/utils.ts`) 사용.
+- 인라인 `style={}`은 동적 값이 필요한 경우에만 제한적으로 사용.
 
-## DB 역할 분리
+### PostgreSQL
+- 파라미터화 쿼리(`$1`, `$2`) 필수 — SQL injection 방지.
+- `src/lib/postgres.ts` Pool 싱글턴 사용, `new Pool()` 직접 생성 금지.
 
-- **PostgreSQL**: 구조화 데이터 — `users`, `repositories` (`db/init.sql`로 초기화)
-- **MongoDB**: 문서형 데이터 — `Review` 모델 (코멘트, diff 캐시 등)
+### MongoDB
+- `src/lib/mongodb.ts` 연결 싱글턴 사용.
+- 모델 등록: `mongoose.models.X ?? mongoose.model('X', XSchema)` 패턴 필수.
 
-## Key Design Decisions
+### VCS 레이어
+- `src/lib/vcs/types.ts`의 `VcsProvider` 인터페이스를 통해서만 VCS 접근.
+- 인증 정보는 환경변수로 관리, 코드에 하드코딩 금지.
 
-- `ReviewComment.filePath`는 optional — 파일별 코멘트 vs 커밋 단위 코멘트 방식은 미결정 상태
-- VCS 타입은 `'git' | 'svn'` (`src/types/index.ts`의 `VcsType`)
-- 실제 Git/SVN 명령 실행 로직은 아직 미구현 (API route에서 추가 예정)
+### 보안
+- `NEXT_PUBLIC_` 접두사에 시크릿 값 절대 사용 금지.
+- 에러 메시지에 스택 트레이스·DB 스키마 포함 금지.
+- 사용자 입력을 `dangerouslySetInnerHTML`에 직접 전달 금지.
+
+---
+
+## 개선 작업 시 워크플로우
+
+1. `docs/ROADMAP.md`에서 해당 항목 확인
+2. 작업 완료 후 `- [ ]` → `- [x]` 로 변경
+3. 완료 기록 테이블에 날짜와 항목 추가
+4. `docs/PROJECT.md`의 "알려진 제약" 항목도 함께 업데이트

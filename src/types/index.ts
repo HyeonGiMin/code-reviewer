@@ -1,5 +1,7 @@
 export type VcsType = 'git' | 'svn'
 
+export type ReviewStatus = 'pending' | 'approved' | 'needs_changes'
+
 export interface User {
   id: number
   email: string
@@ -38,6 +40,7 @@ export interface Review {
   repositoryId: number
   revision: string
   userId: number
+  status: ReviewStatus
   comments: ReviewComment[]
   createdAt: Date
   updatedAt: Date

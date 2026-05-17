@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import {
   ChevronLeft, User, Clock, FileText, MessageSquare,
   Loader2, AlertCircle, ChevronDown, ChevronRight, Copy,
+  CheckCircle2, XCircle, Circle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { CommitLog, FileDiff, ReviewComment } from '@/types'
+import type { CommitLog, FileDiff, ReviewComment, ReviewStatus } from '@/types'
 
 // ─── 파일 아이콘 (VSCode Material 스타일) ─────────────────
 import { FileIcon as RawFileIcon, defaultStyles } from 'react-file-icon'
@@ -142,6 +143,29 @@ function TreeDir({
   )
 }
 
+function TruncatedLabel({ text, className }: { text: string; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const check = () => setOverflowing(el.scrollWidth > el.clientWidth)
+    check()
+
+    const observer = new ResizeObserver(check)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [text])
+
+  return (
+    <span ref={ref} title={overflowing ? text : undefined} className={className}>
+      {text}
+    </span>
+  )
+}
+
 function TreeFile({
   node, depth, activeFile, onSelect,
 }: {
@@ -165,9 +189,10 @@ function TreeFile({
     >
       <span className="w-3 shrink-0" />
       <FileIcon name={node.name} />
-      <span className={cn('text-xs font-mono truncate flex-1 min-w-0', isActive ? 'text-[#0969da]' : status === 'deleted' ? 'text-[#656d76] line-through' : 'text-[#1f2328]')}>
-        {node.name}
-      </span>
+      <TruncatedLabel
+        text={node.name}
+        className={cn('text-xs font-mono truncate flex-1 min-w-0', isActive ? 'text-[#0969da]' : status === 'deleted' ? 'text-[#656d76] line-through' : 'text-[#1f2328]')}
+      />
       {status === 'added' && <span className="text-[10px] px-1 rounded-sm bg-[#e6ffec] text-[#1a7f37] border border-[#1a7f37]/20" title="Added">A</span>}
       {status === 'modified' && <span className="text-[10px] px-1 rounded-sm bg-[#ddf4ff] text-[#0969da] border border-[#0969da]/20" title="Modified">M</span>}
       {status === 'deleted' && <span className="text-[10px] px-1 rounded-sm bg-[#ffebe9] text-[#82071e] border border-[#82071e]/20" title="Deleted">D</span>}
@@ -400,14 +425,23 @@ function FileDiffBlock({ file, active, onSelect }: {
 // ─── 메인 ─────────────────────────────────────────────────
 interface Props { repoId: string; commit: CommitLog }
 
+const STATUS_CONFIG: Record<ReviewStatus, { label: string; icon: React.ReactNode; className: string }> = {
+  pending:       { label: '미검토',  icon: <Circle className="w-3.5 h-3.5" />,      className: 'text-[#656d76] border-[#d0d7de] bg-white hover:bg-[#f6f8fa]' },
+  approved:      { label: '승인',    icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'text-[#1a7f37] border-[#1a7f37]/40 bg-[#e6ffec] hover:bg-[#d1ffd8]' },
+  needs_changes: { label: '수정 필요', icon: <XCircle className="w-3.5 h-3.5" />,    className: 'text-[#82071e] border-[#82071e]/40 bg-[#ffebe9] hover:bg-[#ffd7d5]' },
+}
+
 export default function ReviewClient({ repoId, commit }: Props) {
   const [diffs, setDiffs] = useState<FileDiff[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  
+
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>('pending')
+  const [statusLoading, setStatusLoading] = useState(false)
+
   // 전체 코멘트 데이터
   const [allComments, setAllComments] = useState<ReviewComment[]>([])
-  
+
   // null = 커밋 전체 코멘트 모드, string = 파일 코멘트 모드
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [commitComment, setCommitComment] = useState('')
@@ -431,13 +465,38 @@ export default function ReviewClient({ repoId, commit }: Props) {
         if (diffData.error) throw new Error(diffData.error)
         setDiffs(diffData)
 
-        const comments = reviewResult.status === 'fulfilled' ? (reviewResult.value.comments ?? []) : []
-        setAllComments(comments)
-        setCommitComment(comments.find((c: ReviewComment) => !c.filePath)?.body || '')
+        if (reviewResult.status === 'fulfilled') {
+          const review = reviewResult.value
+          const comments = review.comments ?? []
+          setAllComments(comments)
+          setCommitComment(comments.find((c: ReviewComment) => !c.filePath)?.body || '')
+          if (review.status) setReviewStatus(review.status)
+        }
       })
       .catch((e) => setFetchError(e.message))
       .finally(() => setLoading(false))
   }, [repoId, commit.revision])
+
+  async function changeStatus(next: ReviewStatus) {
+    if (statusLoading) return
+    const prev = reviewStatus
+    setReviewStatus(next) // optimistic
+    setStatusLoading(true)
+    try {
+      const res = await fetch(`/api/repositories/${repoId}/reviews/${commit.revision}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      })
+      if (!res.ok) throw new Error('상태 변경 실패')
+      toast.success(STATUS_CONFIG[next].label + '로 변경되었습니다.')
+    } catch (err) {
+      setReviewStatus(prev) // rollback
+      toast.error(err instanceof Error ? err.message : '오류가 발생했습니다.')
+    } finally {
+      setStatusLoading(false)
+    }
+  }
 
   // 파일 선택 시 해당 파일의 기존 코멘트 복원
   function selectFile(filePath: string) {
@@ -494,15 +553,36 @@ export default function ReviewClient({ repoId, commit }: Props) {
             <Badge variant="secondary" className="font-mono">{commit.revision.slice(0, 7)}</Badge>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 mt-1">
+        <div className="flex items-center gap-2 shrink-0 mt-1" onClick={(e) => e.stopPropagation()}>
           {!loading && !fetchError && (
             <span className="flex items-center gap-1.5 text-xs text-[#656d76]">
               <FileText className="w-3.5 h-3.5" />{diffs.length}개 파일
             </span>
           )}
-          {activeFile === null && (
-            <span className="text-xs text-[#0969da] font-medium">커밋 코멘트 작성 중</span>
-          )}
+
+          {/* 리뷰 상태 버튼 */}
+          <div className="flex items-center gap-1">
+            {(['approved', 'needs_changes', 'pending'] as ReviewStatus[]).map((s) => {
+              const cfg = STATUS_CONFIG[s]
+              const isActive = reviewStatus === s
+              return (
+                <button
+                  key={s}
+                  disabled={statusLoading}
+                  onClick={() => changeStatus(s)}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-medium transition-all',
+                    isActive ? cfg.className : 'text-[#656d76] border-[#d0d7de] bg-white hover:bg-[#f6f8fa] opacity-50',
+                    statusLoading && 'cursor-not-allowed',
+                  )}
+                  title={cfg.label}
+                >
+                  {cfg.icon}
+                  <span className="hidden sm:inline">{cfg.label}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       </button>
 

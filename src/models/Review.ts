@@ -1,10 +1,11 @@
 import mongoose, { Schema, Document } from 'mongoose'
-import type { ReviewComment } from '@/types'
+import type { ReviewComment, ReviewStatus } from '@/types'
 
 export interface IReview extends Document {
   repositoryId: number
   revision: string
   userId: number
+  status: ReviewStatus
   comments: ReviewComment[]
   createdAt: Date
   updatedAt: Date
@@ -19,7 +20,8 @@ const ReviewCommentSchema = new Schema<ReviewComment>({
 const ReviewSchema = new Schema<IReview>({
   repositoryId: { type: Number, required: true },
   revision: { type: String, required: true },
-  userId: { type: Number, required: true }, // 사용자별 코멘트를 구분
+  userId: { type: Number, required: true },
+  status: { type: String, enum: ['pending', 'approved', 'needs_changes'], default: 'pending' },
   comments: { type: [ReviewCommentSchema], default: [] },
 }, { timestamps: true })
 

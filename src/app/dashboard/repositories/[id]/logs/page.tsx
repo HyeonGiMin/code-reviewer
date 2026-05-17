@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { auth } from '@/lib/auth'
 import { getRepository } from '@/lib/repositories'
 import { createVcsProvider } from '@/lib/vcs'
-import type { CommitLog } from '@/types'
+import connectMongoDB from '@/lib/mongodb'
+import Review from '@/models/Review'
+import type { CommitLog, ReviewStatus } from '@/types'
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -21,6 +23,23 @@ function RevisionBadge({ revision, isSvn }: { revision: string; isSvn: boolean }
     <Badge variant="secondary" className="text-xs font-mono shrink-0">
       {label}
     </Badge>
+  )
+}
+
+const STATUS_DOT: Record<ReviewStatus, { color: string; label: string }> = {
+  pending:       { color: 'bg-[#d0d7de]',  label: '미검토' },
+  approved:      { color: 'bg-[#1a7f37]',  label: '승인' },
+  needs_changes: { color: 'bg-[#cf222e]',  label: '수정 필요' },
+}
+
+function StatusDot({ status }: { status: ReviewStatus | undefined }) {
+  if (!status || status === 'pending') return null
+  const cfg = STATUS_DOT[status]
+  return (
+    <span
+      title={cfg.label}
+      className={`w-2 h-2 rounded-full shrink-0 ${cfg.color}`}
+    />
   )
 }
 
@@ -42,6 +61,24 @@ export default async function LogsPage({ params }: { params: Promise<{ id: strin
     logs = await provider.getLogs(50)
   } catch (e) {
     error = e instanceof Error ? e.message : '로그를 불러오지 못했습니다.'
+  }
+
+  // 각 커밋의 리뷰 상태를 배치 조회
+  let statusMap: Record<string, ReviewStatus> = {}
+  if (logs.length > 0) {
+    try {
+      await connectMongoDB()
+      const reviews = await Review.find({
+        repositoryId: Number(id),
+        userId: Number(session.user.id),
+        revision: { $in: logs.map((l) => l.revision) },
+      }).select('revision status').lean()
+      statusMap = Object.fromEntries(
+        reviews.map((r) => [r.revision, (r.status as ReviewStatus) ?? 'pending'])
+      )
+    } catch {
+      // 상태 조회 실패 시 배지 없이 렌더
+    }
   }
 
   return (
@@ -85,9 +122,12 @@ export default async function LogsPage({ params }: { params: Promise<{ id: strin
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 group-hover:text-primary transition-colors line-clamp-2 whitespace-pre-line">
-                    {log.message.trim() || '(메시지 없음)'}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={statusMap[log.revision]} />
+                    <p className="text-sm font-semibold text-gray-800 group-hover:text-primary transition-colors line-clamp-2 whitespace-pre-line">
+                      {log.message.trim() || '(메시지 없음)'}
+                    </p>
+                  </div>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <User className="w-3 h-3" />

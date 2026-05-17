@@ -275,12 +275,12 @@ const TEXT_COLOR: Record<string, string> = {
 
 function DiffTable({ rows }: { rows: SplitRow[] }) {
   return (
-    <div className="overflow-x-auto">
+    <div>
       <table className="w-full border-collapse font-mono text-xs table-fixed">
         <colgroup>
           <col className="w-[50px]" />{/* left lineno */}
           <col />{/* left content */}
-          <col className="w-[1px] bg-[#d0d7de]" />{/* divider */}
+          <col className="w-[1px]" />{/* divider */}
           <col className="w-[50px]" />{/* right lineno */}
           <col />{/* right content */}
         </colgroup>
@@ -300,14 +300,14 @@ function DiffTable({ rows }: { rows: SplitRow[] }) {
               <tr key={i}>
                 {/* 왼쪽 라인번호 */}
                 <td
-                  className="select-none text-right px-2 py-0.5 text-[11px] leading-5 border-r border-[#d0d7de]"
+                  className="select-none text-right align-top px-2 py-0.5 text-[11px] leading-5 border-r border-[#d0d7de]"
                   style={{ backgroundColor: LINO_BG[row.leftType], color: '#656d76' }}
                 >
                   {row.leftNo ?? ''}
                 </td>
                 {/* 왼쪽 내용 */}
                 <td
-                  className="px-3 py-0.5 whitespace-pre leading-5 overflow-hidden"
+                  className="px-3 py-0.5 whitespace-pre-wrap break-all leading-5"
                   style={{ backgroundColor: CELL_BG[row.leftType], color: TEXT_COLOR[row.leftType] }}
                 >
                   {row.leftType === 'removed' && <span className="select-none text-[#82071e] mr-1">-</span>}
@@ -317,14 +317,14 @@ function DiffTable({ rows }: { rows: SplitRow[] }) {
                 <td className="p-0 border-x border-[#d0d7de] bg-[#d0d7de]" style={{ width: 1 }} />
                 {/* 오른쪽 라인번호 */}
                 <td
-                  className="select-none text-right px-2 py-0.5 text-[11px] leading-5 border-r border-[#d0d7de]"
+                  className="select-none text-right align-top px-2 py-0.5 text-[11px] leading-5 border-r border-[#d0d7de]"
                   style={{ backgroundColor: LINO_BG[row.rightType], color: '#656d76' }}
                 >
                   {row.rightNo ?? ''}
                 </td>
                 {/* 오른쪽 내용 */}
                 <td
-                  className="px-3 py-0.5 whitespace-pre leading-5 overflow-hidden"
+                  className="px-3 py-0.5 whitespace-pre-wrap break-all leading-5"
                   style={{ backgroundColor: CELL_BG[row.rightType], color: TEXT_COLOR[row.rightType] }}
                 >
                   {row.rightType === 'added' && <span className="select-none text-[#1a7f37] mr-1">+</span>}
